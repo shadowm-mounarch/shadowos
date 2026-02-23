@@ -1,29 +1,27 @@
 #![no_std]
 #![no_main]
 
-use core::panic::PanicInfo;
-use limine::request::FramebufferRequest;
+mod vga_buffer;
 
-static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
+use core::panic::PanicInfo;
+use core::fmt::Write;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    if let Some(framebuffer_response) = FRAMEBUFFER_REQUEST.get_response() {
-        if let Some(framebuffer) = framebuffer_response.framebuffers().next() {
-            let ptr = framebuffer.addr() as *mut u32;
-            let count = (framebuffer.width() * framebuffer.height()) as usize;
-            for i in 0..count {
-                unsafe {
-                    *ptr.add(i) = 0xFF0000FF; // Blue
-                }
-            }
-        }
-    }
+    vga_buffer::WRITER.lock().write_str("Hello, world!").unwrap();
 
     loop {}
 }
 
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(info: &PanicInfo) -> ! {
+    use core::fmt::Write;
+    let mut writer = vga_buffer::WRITER.lock();
+    writer.write_str("\nPANIC!\n").unwrap();
+    if let Some(location) = info.location() {
+        write!(writer, "{}:{}: {}\n", location.file(), location.line(), info.message()).unwrap();
+    } else {
+        write!(writer, "{}\n", info.message()).unwrap();
+    }
     loop {}
 }
