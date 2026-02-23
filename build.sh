@@ -15,7 +15,7 @@ cd ..
 mkdir -p iso/boot
 
 # Copy the kernel binary
-cp target/x86_64-unknown-none/release/kernel iso/boot/kernel
+cp kernel/target/x86_64-unknown-none/release/kernel iso/boot/kernel
 
 # Copy Limine files
 if [ ! -f "iso/boot/limine-bios.sys" ]; then
@@ -25,7 +25,7 @@ fi
 # Create ISO if xorriso is available
 if command -v xorriso &> /dev/null; then
     echo "Creating ISO image..."
-    xorriso -as mkisofs -b boot/limine-bios.sys \
+    xorriso -as mkisofs -b boot/limine/limine-bios-cd.bin \
         -no-emul-boot -boot-load-size 4 -boot-info-table \
         --efi-boot boot/limine/limine-uefi-cd.bin \
         -efi-boot-part --efi-boot-image --protective-msdos-label \

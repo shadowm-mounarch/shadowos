@@ -1,20 +1,32 @@
 #![no_std]
 #![no_main]
+#![feature(abi_x86_interrupt)]
 
 mod vga_buffer;
 mod serial;
 mod block_device;
 mod ramdisk;
+mod font;
+mod framebuffer;
+mod gdt;
+mod pic;
+mod interrupts;
+mod keyboard;
+mod shell;
 
 use core::panic::PanicInfo;
 use core::fmt::Write;
 use block_device::{BlockDevice, BLOCK_SIZE};
 use limine::BaseRevision;
-use limine::request::{RequestsStartMarker, RequestsEndMarker};
+use limine::request::{FramebufferRequest, RequestsStartMarker, RequestsEndMarker};
 
 #[used]
 #[link_section = ".requests"]
 static BASE_REVISION: BaseRevision = BaseRevision::new();
+
+#[used]
+#[link_section = ".requests"]
+static FRAMEBUFFER_REQUEST: FramebufferRequest = FramebufferRequest::new();
 
 #[used]
 #[link_section = ".requests_start_marker"]
@@ -32,6 +44,47 @@ pub extern "C" fn _start() -> ! {
     writeln!(serial, "================").unwrap();
     writeln!(serial).unwrap();
 
+    // Initialize GDT (must be first — IDT references TSS)
+    gdt::init();
+    writeln!(serial, "[*] GDT initialized").unwrap();
+
+    // Initialize PIC (remap IRQs to 32-47, all masked)
+    pic::init();
+    writeln!(serial, "[*] PIC remapped (IRQ 0-15 -> vectors 32-47)").unwrap();
+
+    // Initialize IDT
+    interrupts::init();
+    writeln!(serial, "[*] IDT loaded").unwrap();
+
+    // Unmask keyboard IRQ (IRQ1)
+    pic::unmask_irq(1);
+    writeln!(serial, "[*] Keyboard IRQ unmasked").unwrap();
+
+    // Initialize framebuffer
+    if let Some(response) = FRAMEBUFFER_REQUEST.get_response() {
+        if let Some(fb) = response.framebuffers().next() {
+            writeln!(serial, "[*] Framebuffer: {}x{}, {}bpp, pitch={}",
+                     fb.width(), fb.height(), fb.bpp(), fb.pitch()).unwrap();
+
+            framebuffer::init(
+                fb.addr(),
+                fb.width() as usize,
+                fb.height() as usize,
+                fb.pitch() as usize,
+                fb.bpp() as usize,
+                fb.red_mask_shift(),
+                fb.green_mask_shift(),
+                fb.blue_mask_shift(),
+            );
+
+            writeln!(serial, "[*] Framebuffer initialized").unwrap();
+        } else {
+            writeln!(serial, "[!] No framebuffers available").unwrap();
+        }
+    } else {
+        writeln!(serial, "[!] Framebuffer request not answered by bootloader").unwrap();
+    }
+
     // Initialize RAM disk
     writeln!(serial, "[*] Initializing RAM disk...").unwrap();
     ramdisk::init();
@@ -40,10 +93,16 @@ pub extern "C" fn _start() -> ! {
     test_ramdisk(&mut serial);
 
     writeln!(serial, "\n[*] Kernel initialization complete.").unwrap();
+    writeln!(serial, "[*] Enabling interrupts...").unwrap();
 
-    loop {
-        core::hint::spin_loop();
-    }
+    // Drop serial lock before enabling interrupts to prevent deadlock
+    drop(serial);
+
+    // Enable interrupts
+    x86_64::instructions::interrupts::enable();
+
+    // Hand off to the interactive shell
+    shell::run();
 }
 
 fn test_ramdisk(serial: &mut serial::SerialPort) {
@@ -94,6 +153,9 @@ fn test_ramdisk(serial: &mut serial::SerialPort) {
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
+    // Disable interrupts in panic to prevent re-entrancy
+    x86_64::instructions::interrupts::disable();
+
     let mut serial = serial::SERIAL.lock();
     writeln!(serial, "\nPANIC!").unwrap();
     if let Some(location) = info.location() {
@@ -102,6 +164,6 @@ fn panic(info: &PanicInfo) -> ! {
         writeln!(serial, "{}", info.message()).unwrap();
     }
     loop {
-        core::hint::spin_loop();
+        x86_64::instructions::hlt();
     }
 }
