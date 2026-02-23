@@ -1,7 +1,19 @@
 use core::fmt;
+use core::sync::atomic::{AtomicUsize, Ordering};
 use lazy_static::lazy_static;
 use spin::Mutex;
 use volatile::Volatile;
+
+const VGA_PHYS_ADDR: usize = 0xb8000;
+static HHDM_OFFSET: AtomicUsize = AtomicUsize::new(0);
+
+pub fn init(hhdm_offset: usize) {
+    HHDM_OFFSET.store(hhdm_offset, Ordering::SeqCst);
+}
+
+fn vga_buffer_addr() -> usize {
+    HHDM_OFFSET.load(Ordering::SeqCst) + VGA_PHYS_ADDR
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,6 +152,6 @@ lazy_static! {
         row_position: 0,
         column_position: 0,
         color_code: ColorCode::new(Color::Yellow, Color::Black),
-        buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
+        buffer: unsafe { &mut *(vga_buffer_addr() as *mut Buffer) },
     });
 }

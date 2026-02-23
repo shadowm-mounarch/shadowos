@@ -64,10 +64,16 @@ To support multiple file systems in the future, we will build a VFS layer from t
 
 ## 6. Implementation Milestones
 
-### Milestone 1: Basic Disk Driver and Block Device Abstraction
+### Milestone 1: Basic Disk Driver and Block Device Abstraction ✅ COMPLETED
 
--   [ ] Implement a driver for a simple disk device (e.g., RAM disk or a simple IDE driver).
--   [ ] Create a block device abstraction that provides `read_block` and `write_block` functions.
+-   [x] Implement a driver for a simple disk device (e.g., RAM disk or a simple IDE driver).
+-   [x] Create a block device abstraction that provides `read_block` and `write_block` functions.
+
+**Implementation Details:**
+- Created `BlockDevice` trait in `kernel/src/block_device.rs`
+- Implemented RAM disk in `kernel/src/ramdisk.rs` with 1MB storage (2048 blocks)
+- Added comprehensive tests in `kernel/src/main.rs`
+- See [RAMDISK_README.md](RAMDISK_README.md) for full documentation
 
 ### Milestone 2: ShadowFS On-Disk Structures
 
